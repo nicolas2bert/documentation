@@ -1,7 +1,7 @@
 Getting Started
 ===============
 
-.. figure:: res/Scality-S3-Server-Logo-Large.png
+.. figure:: https://github.com/scality/S3/blob/master/res/Scality-S3-Server-Logo-Large.png
    :alt: S3 Server logo
 
    S3 Server logo
