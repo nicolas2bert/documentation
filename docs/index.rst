@@ -7,6 +7,6 @@ Scality S3 documentation
    :maxdepth: 2
    :caption: User Documentation
 
-   DOCKER
    DUPLICITY
    SSL
+   DOCKER
