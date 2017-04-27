@@ -1,132 +1,202 @@
-What's new in Zope 4.0
-======================
+Using S3 for continuous integration testing or in production with Docker
+========================================================================
 
-The article explains the new high-level features and changes found in this
-version of Zope.
+-  `For continuous integration with
+   Docker <#for-continuous-integration-with-docker>`__
+-  `Environment Variables <#environment-variables>`__
+-  `In production with Docker <#in-production-with-docker>`__
+-  `Using Docker Volume in
+   production <#using-docker-volume-in-production>`__
+-  `Adding modifying or deleting accounts or users
+   credentials <#adding-modifying-or-deleting-accounts-or-users-credentials>`__
+-  `Specifying your own host name <#specifying-your-own-host-name>`__
+-  `Running as an unprivileged
+   user <#running-as-an-unprivileged-user>`__
 
-You can have a look at the `detailed change log <CHANGES.html>`_ to learn
-about all minor new features and bugs being solved in this release.
+For continuous integration with Docker
+--------------------------------------
 
+When you start the Docker Scality S3 server image, you can adjust the
+configuration of the Scality S3 server instance by passing one or more
+environment variables on the docker run command line.
 
-Version numbering increase
---------------------------
+Environment Variables
+~~~~~~~~~~~~~~~~~~~~~
 
-Version numbers for Zope have been confusing in the past. The original Zope
-project iterated through version one to two up to version 2.13. In parallel
-a separate project was launched using the name Zope 3. Zope 3 wasn't a new
-version of the original Zope project and in hindsight should have used a
-different project name. These days this effort is known as BlueBream.
+HOST\_NAME
+^^^^^^^^^^
 
-In order to avoid confusion between the separate Zope 3 project and a
-new version of this project, it was decided to skip ahead and use
-Zope 4.0 as the next version number. The increase in the major part of
-the version also indicates the number of backwards incompatible changes
-found in this release.
+This variable specifies a host name. If you have a domain such as
+new.host.com, by specifying that here, you and your users can direct s3
+server requests to new.host.com.
 
+.. code:: shell
 
-Python versions
----------------
+    docker run -d --name s3server -p 8000:8000 -e HOST_NAME=new.host.com scality/s3server
 
-Zope 4 exclusively supports Python 2.7. A large number of its dependencies
-have been ported to Python 3, so there is reasonable hope that Python 3
-support can be added to Zope in the future. It is most likely that this
-support will not extend to optional dependencies like the ZServer project
-or projects supporting TTW development.
+Note: In your ``/etc/hosts`` file on Linux, OS X, or Unix with root
+permissions, make sure to associate 127.0.0.1 with ``new.host.com``
 
+SCALITY\_ACCESS\_KEY\_ID and SCALITY\_SECRET\_ACCESS\_KEY
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Recommended WSGI setup
-----------------------
+These variables specify authentication credentials for an account named
+"CustomAccount".
 
-Zope 2.13 first gained support for running Zope as a WSGI application,
-using any WSGI capable web server instead of the built-in ZServer.
+You can set credentials for many accounts by editing
+``conf/authdata.json`` (see below for further info), but if you just
+want to specify one set of your own, you can use these environment
+variables.
 
-Zope 4.0 takes this one step further and recommends using WSGI as the
-default setup and functional testing (testbrowser) support uses the new
-WSGI publisher.
+.. code:: shell
 
-The ZServer based publisher got moved into its own optional project.
-So if you rely on ZServer features, like Webdav, FTP, zdaemon or zopectl
-support, please make sure to install ZServer and use its ``mkzopeinstance``
-script to create a Zope instance.
+    docker run -d --name s3server -p 8000:8000 -e SCALITY_ACCESS_KEY_ID=newAccessKey
+    -e SCALITY_SECRET_ACCESS_KEY=newSecretKey scality/s3server
 
-The ZServer project also includes limited functional testing support
-in the `ZServer.Testing` sub-package. testbrowser support is exclusively
-available based on the WSGI publisher, as a result of a switch from
-the unmaintained mechanize project to WebTest.
+Note: Anything in the ``authdata.json`` file will be ignored. Note: The
+old ``ACCESS_KEY`` and ``SECRET_KEY`` environment variables are now
+deprecated
 
-By default Zope only ships with a new ``mkwsgiinstance`` script which
-creates a Zope instance configured to run as a WSGI application. The
-example configuration uses the ``waitress`` web server, but Zope can
-be run using any WSGI capable web server.
+LOG\_LEVEL
+^^^^^^^^^^
 
-To make running Zope easier, a new ``runwsgi`` command line script got
-added, which can read a PasteDeploy configuration and create and run
-the WSGI pipeline specified in it. By default such a configuration is
-created in the ``etc/zope.ini`` file. The WSGI support has no built-in
-support for running as a daemon. Your chosen WSGI server might support
-this or you can use external projects like supervisord.
+This variable allows you to change the log level: info, debug or trace.
+The default is info. Debug will give you more detailed logs and trace
+will give you the most detailed.
 
-The WSGI support in Zope 4 has changed in a number of ways to make it
-more similar to its ZServer equivalent. In Zope 2.13 the WSGI support
-required using repoze WSGI middlewares to add transaction and retry
-handling. The WSGI support in Zope 4 no longer supports those middlewares
-but integrates transaction and retry handling back into the publisher
-code. This allows it to also add back full support for publication events
-and exception views. It does mean that the transaction is begun and
-committed or aborted inside the publisher code and you can no longer
-write WSGI middlewares that take part in the transaction cycle, but
-instead have to use Zope specific hooks like you do in the ZServer based
-publisher.
+.. code:: shell
 
+    docker run -d --name s3server -p 8000:8000 -e LOG_LEVEL=trace scality/s3server
 
-Reduced ZMI functionality
+SSL
+^^^
+
+This variable specifies the Common Name ``<DOMAIN_NAME>`` used to create
+the Certificate Signing Request using OpenSSL. This allows you to run S3
+with SSL:
+
+**Note**: In your ``/etc/hosts`` file on Linux, OS X, or Unix with root
+permissions, make sure to associate 127.0.0.1 with
+``<SUBDOMAIN>.<DOMAIN_NAME>``
+
+**Warning**: These certs, being self-signed (and the CA being generated
+inside the container) will be untrusted by any clients, and could
+disappear on a container upgrade. That's ok as long as it's for quick
+testing. Also, best security practice for non-testing would be to use an
+extra container to do SSL/TLS termination such as haproxy/nginx/stunnel
+to limit what an exploit on either component could expose, as well as
+certificates in a mounted volume
+
+.. code:: shell
+
+    docker run -d --name s3server -p 8000:8000 -e SSL=<DOMAIN_NAME> -e HOST_NAME=<SUBDOMAIN>.<DOMAIN_NAME>
+    scality/s3server
+
+More information about how to use S3 server with SSL
+`here <https://s3.scality.com/v1.0/page/scality-with-ssl>`__
+
+In production with Docker
 -------------------------
 
-Zope traditionally came with a full-featured through-the-web development
-and administration environment called the Zope Management Interface (ZMI).
+Using Docker Volume in production
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Over time the ZMI has not been maintained or developed further and today
-is a large source of vulnerabilities like cross site scripting (XSS)
-or cross site request forgery (CSRF) attacks. Generally it is therefor
-recommended to restrict access to the ZMI via network level protections,
-for example firewalls and VPN access to not expose it to the public.
+S3 server runs with a file backend by default.
 
-In Zope 4 the functionality of the ZMI is starting to be reduced and
-development support and general content editing are being removed.
-If you relied on those features before, you will need to write your own
-content editing UI or move development to the file system.
+So, by default, the data is stored inside your S3 server Docker
+container.
 
+However, if you want your data and metadata to persist, you **MUST** use
+Docker volumes to host your data and metadata outside your s3 server
+Docker container. Otherwise, the data and metadata will be destroyed
+when you erase the container.
 
-View components without Acquisition
------------------------------------
+.. code:: shell
 
-In Zope 2.12 Zope Toolkit view components changed and stopped inheriting
-from Acquisition base classes, as Acquisition got aware of `__parent__`
-pointers, which meant that ``aq_parent(view)`` worked, without the view
-having to mix-in an Acquisition base class. For backwards compatibility
-a new `AcqusitionBBB` class was mixed in, to continue to support calling
-``view.aq_parent``. This backwards compatibility class has been removed
-in Zope 4, so ``view.aq_parent`` no longer works and you have to use
-``aq_parent(view)``. The same applies for other view components like
-view page template files or viewlets.
+    docker run -­v $(pwd)/data:/usr/src/app/localData -­v $(pwd)/metadata:/usr/src/app/localMetadata
+    -p 8000:8000 ­-d scality/s3server
 
+This command mounts the host directory, ``./data``, into the container
+at /usr/src/app/localData and the host directory, ``./metadata``, into
+the container at /usr/src/app/localMetaData. It can also be any host
+mount point, like ``/mnt/data`` and ``/mnt/metadata``.
 
-Chameleon based page templates
-------------------------------
+Adding modifying or deleting accounts or users credentials
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Chameleon is an alternative implementation of the page template language
-supporting additional features and impressive template rendering speed.
+1. Create locally a customized ``authdata.json``.
 
-So far it was available via the `five.pt` project. In Zope 4 the code
-from `five.pt` has been merged into Zope core and the Chameleon based
-engine is now the default, removing the need to install `five.pt`
-manually.
+2. Use `Docker
+   Volume <https://docs.docker.com/engine/tutorials/dockervolumes/>`__
 
+to override the default ``authdata.json`` through a docker file mapping.
+For example:
 
-Memory use
-----------
+.. code:: shell
 
-Zope 4 depends on the new DateTime version 3. DateTime 3 has been optimized
-for better memory use. Applications using a lot of DateTime values like the
-Plone CMS have seen total memory usage to decrease by 10% to 20% for medium
-to large deployments.
+    docker run -v $(pwd)/authdata.json:/usr/src/app/conf/authdata.json -p 8000:8000 -d
+    scality/s3server
+
+Specifying your own host name
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+To specify a host name (e.g. s3.domain.name), you can provide your own
+`config.json <https://github.com/scality/S3/blob/master/config.json>`__
+using `Docker
+Volume <https://docs.docker.com/engine/tutorials/dockervolumes/>`__.
+
+First add a new key-value pair in the restEndpoints section of your
+config.json. The key in the key-value pair should be the host name you
+would like to add and the value is the default location\_constraint for
+this endpoint.
+
+For example, ``s3.example.com`` is mapped to ``us-east-1`` which is one
+of the ``location_constraints`` listed in your locationConfig.json file
+`here <https://github.com/scality/S3/blob/master/locationConfig.json>`__.
+
+More information about location configuration
+`here <https://github.com/scality/S3/blob/master/README.md#location-configuration>`__
+
+.. code:: json
+
+    "restEndpoints": {
+        "localhost": "file",
+        "127.0.0.1": "file",
+        ...
+        "s3.example.com": "us-east-1"
+    },
+
+Then, run your Scality S3 Server using `Docker
+Volume <https://docs.docker.com/engine/tutorials/dockervolumes/>`__:
+
+.. code:: shell
+
+    docker run -v $(pwd)/config.json:/usr/src/app/config.json -p 8000:8000 -d scality/s3server
+
+Your local ``config.json`` file will override the default one through a
+docker file mapping.
+
+Running as an unprivileged user
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+S3 Server runs as root by default.
+
+You can change that by modifing the dockerfile and specifying a user
+before the entrypoint.
+
+The user needs to exist within the container, and own the folder
+**/usr/src/app** for Scality S3 Server to run properly.
+
+For instance, you can modify these lines in the dockerfile:
+
+.. code:: shell
+
+    ...
+    && groupadd -r -g 1001 scality \
+    && useradd -u 1001 -g 1001 -d /usr/src/app -r scality \
+    && chown -R scality:scality /usr/src/app
+
+    ...
+
+    USER scality
+    ENTRYPOINT ["/usr/src/app/docker-entrypoint.sh"]
