@@ -1,5 +1,7 @@
-Using S3 for continuous integration testing or in production with Docker
+DOCKER
 ========================================================================
+
+Using S3 for continuous integration testing or in production with Docker
 
 -  `For continuous integration with
    Docker <#for-continuous-integration-with-docker>`__
