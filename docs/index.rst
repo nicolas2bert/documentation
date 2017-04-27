@@ -11,3 +11,4 @@ Scality S3 documentation
    DOCKER
    DUPLICITY
    SSL
+   HA

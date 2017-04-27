@@ -1,4 +1,4 @@
-DOCKER
+Docker
 ========================================================================
 
 Using S3 for continuous integration testing or in production with Docker

@@ -1,132 +1,144 @@
-What's new in Zope 4.0
-======================
+Scality with SSL
+================
 
-The article explains the new high-level features and changes found in this
-version of Zope.
+If you wish to use https with your local S3 Server, you need to set up
+SSL certificates. Here is a simple guide of how to do it.
 
-You can have a look at the `detailed change log <CHANGES.html>`_ to learn
-about all minor new features and bugs being solved in this release.
+Deploying S3 Server
+-------------------
 
+First, you need to deploy **S3 Server**. This can be done very easily
+via `our **DockerHub**
+page <https://hub.docker.com/r/scality/s3server/>`__ (you want to run it
+with a file backend).
 
-Version numbering increase
---------------------------
+    *Note:* *- If you don't have docker installed on your machine, here
+    are the `instructions to install it for your
+    distribution <https://docs.docker.com/engine/installation/>`__*
 
-Version numbers for Zope have been confusing in the past. The original Zope
-project iterated through version one to two up to version 2.13. In parallel
-a separate project was launched using the name Zope 3. Zope 3 wasn't a new
-version of the original Zope project and in hindsight should have used a
-different project name. These days this effort is known as BlueBream.
+Updating your S3 Server container's config
+------------------------------------------
 
-In order to avoid confusion between the separate Zope 3 project and a
-new version of this project, it was decided to skip ahead and use
-Zope 4.0 as the next version number. The increase in the major part of
-the version also indicates the number of backwards incompatible changes
-found in this release.
+You're going to add your certificates to your container. In order to do
+so, you need to exec inside your s3 server container. Run a
+``$> docker ps`` and find your container's id (the corresponding image
+name should be ``scality/s3server``. Copy the corresponding container id
+(here we'll use ``894aee038c5e``, and run:
 
+.. code:: sh
 
-Python versions
----------------
+    $> docker exec -it 894aee038c5e bash
 
-Zope 4 exclusively supports Python 2.7. A large number of its dependencies
-have been ported to Python 3, so there is reasonable hope that Python 3
-support can be added to Zope in the future. It is most likely that this
-support will not extend to optional dependencies like the ZServer project
-or projects supporting TTW development.
+You're now inside your container, using an interactive terminal :)
 
+Generate SSL key and certificates
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Recommended WSGI setup
-----------------------
+There are 5 steps to this generation. The paths where the different
+files are stored are defined after the ``-out`` option in each command
 
-Zope 2.13 first gained support for running Zope as a WSGI application,
-using any WSGI capable web server instead of the built-in ZServer.
+.. code:: sh
 
-Zope 4.0 takes this one step further and recommends using WSGI as the
-default setup and functional testing (testbrowser) support uses the new
-WSGI publisher.
+    # Generate a private key for your CSR
+    $> openssl genrsa -out ca.key 2048
+    # Generate a self signed certificate for your local Certificate Authority
+    $> openssl req -new -x509 -extensions v3_ca -key ca.key -out ca.crt -days 99999  -subj "/C=US/ST=Country/L=City/O=Organization/CN=scality.test"
 
-The ZServer based publisher got moved into its own optional project.
-So if you rely on ZServer features, like Webdav, FTP, zdaemon or zopectl
-support, please make sure to install ZServer and use its ``mkzopeinstance``
-script to create a Zope instance.
+    # Generate a key for S3 Server
+    $> openssl genrsa -out test.key 2048
+    # Generate a Certificate Signing Request for S3 Server
+    $> openssl req -new -key test.key -out test.csr -subj "/C=US/ST=Country/L=City/O=Organization/CN=*.scality.test"
+    # Generate a local-CA-signed certificate for S3 Server
+    $> openssl x509 -req -in test.csr -CA ca.crt -CAkey ca.key -CAcreateserial -out test.crt -days 99999 -sha256
 
-The ZServer project also includes limited functional testing support
-in the `ZServer.Testing` sub-package. testbrowser support is exclusively
-available based on the WSGI publisher, as a result of a switch from
-the unmaintained mechanize project to WebTest.
+Update S3Server ``config.json``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-By default Zope only ships with a new ``mkwsgiinstance`` script which
-creates a Zope instance configured to run as a WSGI application. The
-example configuration uses the ``waitress`` web server, but Zope can
-be run using any WSGI capable web server.
+Add a ``certFilePaths`` section to ``./config.json`` with the
+appropriate paths:
 
-To make running Zope easier, a new ``runwsgi`` command line script got
-added, which can read a PasteDeploy configuration and create and run
-the WSGI pipeline specified in it. By default such a configuration is
-created in the ``etc/zope.ini`` file. The WSGI support has no built-in
-support for running as a daemon. Your chosen WSGI server might support
-this or you can use external projects like supervisord.
+.. code:: json
 
-The WSGI support in Zope 4 has changed in a number of ways to make it
-more similar to its ZServer equivalent. In Zope 2.13 the WSGI support
-required using repoze WSGI middlewares to add transaction and retry
-handling. The WSGI support in Zope 4 no longer supports those middlewares
-but integrates transaction and retry handling back into the publisher
-code. This allows it to also add back full support for publication events
-and exception views. It does mean that the transaction is begun and
-committed or aborted inside the publisher code and you can no longer
-write WSGI middlewares that take part in the transaction cycle, but
-instead have to use Zope specific hooks like you do in the ZServer based
-publisher.
+        "certFilePaths": {
+            "key": "./test.key",
+            "cert": "./test.crt",
+            "ca": "./ca.crt"
+        }
 
+Run your container with the new config
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Reduced ZMI functionality
--------------------------
+First, you need to exit your container. Simply run ``$> exit``. Then,
+you need to restart your container. Normally, a simple
+``$> docker restart s3server`` should do the trick.
 
-Zope traditionally came with a full-featured through-the-web development
-and administration environment called the Zope Management Interface (ZMI).
+Update your host config
+-----------------------
 
-Over time the ZMI has not been maintained or developed further and today
-is a large source of vulnerabilities like cross site scripting (XSS)
-or cross site request forgery (CSRF) attacks. Generally it is therefor
-recommended to restrict access to the ZMI via network level protections,
-for example firewalls and VPN access to not expose it to the public.
+Associates local IP addresses with hostname
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In Zope 4 the functionality of the ZMI is starting to be reduced and
-development support and general content editing are being removed.
-If you relied on those features before, you will need to write your own
-content editing UI or move development to the file system.
+In your ``/etc/hosts`` file on Linux, OS X, or Unix (with root
+permissions), edit the line of localhost so it looks like this:
 
+::
 
-View components without Acquisition
------------------------------------
+    127.0.0.1      localhost s3.scality.test
 
-In Zope 2.12 Zope Toolkit view components changed and stopped inheriting
-from Acquisition base classes, as Acquisition got aware of `__parent__`
-pointers, which meant that ``aq_parent(view)`` worked, without the view
-having to mix-in an Acquisition base class. For backwards compatibility
-a new `AcqusitionBBB` class was mixed in, to continue to support calling
-``view.aq_parent``. This backwards compatibility class has been removed
-in Zope 4, so ``view.aq_parent`` no longer works and you have to use
-``aq_parent(view)``. The same applies for other view components like
-view page template files or viewlets.
+Copy the local certificate authority from your container
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+In the above commands, it's the file named ``ca.crt``. Choose the path
+you want to save this file at (here we chose ``/root/ca.crt``), and run
+something like:
 
-Chameleon based page templates
-------------------------------
+.. code:: sh
 
-Chameleon is an alternative implementation of the page template language
-supporting additional features and impressive template rendering speed.
+    $> docker cp 894aee038c5e:/usr/src/app/ca.crt /root/ca.crt
 
-So far it was available via the `five.pt` project. In Zope 4 the code
-from `five.pt` has been merged into Zope core and the Chameleon based
-engine is now the default, removing the need to install `five.pt`
-manually.
+Test your config
+----------------
 
+If you do not have aws-sdk installed, run ``$> npm install aws-sdk``. In
+a ``test.js`` file, paste the following script:
 
-Memory use
-----------
+.. code:: js
 
-Zope 4 depends on the new DateTime version 3. DateTime 3 has been optimized
-for better memory use. Applications using a lot of DateTime values like the
-Plone CMS have seen total memory usage to decrease by 10% to 20% for medium
-to large deployments.
+    const AWS = require('aws-sdk');
+    const fs = require('fs');
+    const https = require('https');
+
+    const httpOptions = {
+        agent: new https.Agent({
+            // path on your host of the self-signed certificate
+            ca: fs.readFileSync('./ca.crt', 'ascii'),
+        }),
+    };
+
+    const s3 = new AWS.S3({
+        httpOptions,
+        accessKeyId: 'accessKey1',
+        secretAccessKey: 'verySecretKey1',
+        // The endpoint must be s3.scality.test, else SSL will not work
+        endpoint: 'https://s3.scality.test:8000',
+        sslEnabled: true,
+        // With this setup, you must use path-style bucket access
+        s3ForcePathStyle: true,
+    });
+
+    const bucket = 'cocoriko';
+
+    s3.createBucket({ Bucket: bucket }, err => {
+        if (err) {
+            return console.log('err createBucket', err);
+        }
+        return s3.deleteBucket({ Bucket: bucket }, err => {
+            if (err) {
+                return console.log('err deleteBucket', err);
+            }
+            return console.log('SSL is cool!');
+        });
+    });
+
+Now run that script with ``$> nodejs test.js``. If all goes well, it
+should output ``SSL is cool!``. Enjoy that added security!

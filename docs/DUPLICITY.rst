@@ -1,132 +1,192 @@
-What's new in Zope 4.0
-======================
+Duplicity
+===================================================
 
-The article explains the new high-level features and changes found in this
-version of Zope.
+How to backup your files with S3 Server.
 
-You can have a look at the `detailed change log <CHANGES.html>`_ to learn
-about all minor new features and bugs being solved in this release.
-
-
-Version numbering increase
---------------------------
-
-Version numbers for Zope have been confusing in the past. The original Zope
-project iterated through version one to two up to version 2.13. In parallel
-a separate project was launched using the name Zope 3. Zope 3 wasn't a new
-version of the original Zope project and in hindsight should have used a
-different project name. These days this effort is known as BlueBream.
-
-In order to avoid confusion between the separate Zope 3 project and a
-new version of this project, it was decided to skip ahead and use
-Zope 4.0 as the next version number. The increase in the major part of
-the version also indicates the number of backwards incompatible changes
-found in this release.
-
-
-Python versions
----------------
-
-Zope 4 exclusively supports Python 2.7. A large number of its dependencies
-have been ported to Python 3, so there is reasonable hope that Python 3
-support can be added to Zope in the future. It is most likely that this
-support will not extend to optional dependencies like the ZServer project
-or projects supporting TTW development.
-
-
-Recommended WSGI setup
-----------------------
-
-Zope 2.13 first gained support for running Zope as a WSGI application,
-using any WSGI capable web server instead of the built-in ZServer.
-
-Zope 4.0 takes this one step further and recommends using WSGI as the
-default setup and functional testing (testbrowser) support uses the new
-WSGI publisher.
-
-The ZServer based publisher got moved into its own optional project.
-So if you rely on ZServer features, like Webdav, FTP, zdaemon or zopectl
-support, please make sure to install ZServer and use its ``mkzopeinstance``
-script to create a Zope instance.
-
-The ZServer project also includes limited functional testing support
-in the `ZServer.Testing` sub-package. testbrowser support is exclusively
-available based on the WSGI publisher, as a result of a switch from
-the unmaintained mechanize project to WebTest.
-
-By default Zope only ships with a new ``mkwsgiinstance`` script which
-creates a Zope instance configured to run as a WSGI application. The
-example configuration uses the ``waitress`` web server, but Zope can
-be run using any WSGI capable web server.
-
-To make running Zope easier, a new ``runwsgi`` command line script got
-added, which can read a PasteDeploy configuration and create and run
-the WSGI pipeline specified in it. By default such a configuration is
-created in the ``etc/zope.ini`` file. The WSGI support has no built-in
-support for running as a daemon. Your chosen WSGI server might support
-this or you can use external projects like supervisord.
-
-The WSGI support in Zope 4 has changed in a number of ways to make it
-more similar to its ZServer equivalent. In Zope 2.13 the WSGI support
-required using repoze WSGI middlewares to add transaction and retry
-handling. The WSGI support in Zope 4 no longer supports those middlewares
-but integrates transaction and retry handling back into the publisher
-code. This allows it to also add back full support for publication events
-and exception views. It does mean that the transaction is begun and
-committed or aborted inside the publisher code and you can no longer
-write WSGI middlewares that take part in the transaction cycle, but
-instead have to use Zope specific hooks like you do in the ZServer based
-publisher.
-
-
-Reduced ZMI functionality
--------------------------
-
-Zope traditionally came with a full-featured through-the-web development
-and administration environment called the Zope Management Interface (ZMI).
-
-Over time the ZMI has not been maintained or developed further and today
-is a large source of vulnerabilities like cross site scripting (XSS)
-or cross site request forgery (CSRF) attacks. Generally it is therefor
-recommended to restrict access to the ZMI via network level protections,
-for example firewalls and VPN access to not expose it to the public.
-
-In Zope 4 the functionality of the ZMI is starting to be reduced and
-development support and general content editing are being removed.
-If you relied on those features before, you will need to write your own
-content editing UI or move development to the file system.
-
-
-View components without Acquisition
------------------------------------
-
-In Zope 2.12 Zope Toolkit view components changed and stopped inheriting
-from Acquisition base classes, as Acquisition got aware of `__parent__`
-pointers, which meant that ``aq_parent(view)`` worked, without the view
-having to mix-in an Acquisition base class. For backwards compatibility
-a new `AcqusitionBBB` class was mixed in, to continue to support calling
-``view.aq_parent``. This backwards compatibility class has been removed
-in Zope 4, so ``view.aq_parent`` no longer works and you have to use
-``aq_parent(view)``. The same applies for other view components like
-view page template files or viewlets.
-
-
-Chameleon based page templates
-------------------------------
-
-Chameleon is an alternative implementation of the page template language
-supporting additional features and impressive template rendering speed.
-
-So far it was available via the `five.pt` project. In Zope 4 the code
-from `five.pt` has been merged into Zope core and the Chameleon based
-engine is now the default, removing the need to install `five.pt`
-manually.
-
-
-Memory use
+Installing
 ----------
 
-Zope 4 depends on the new DateTime version 3. DateTime 3 has been optimized
-for better memory use. Applications using a lot of DateTime values like the
-Plone CMS have seen total memory usage to decrease by 10% to 20% for medium
-to large deployments.
+Deploying S3
+~~~~~~~~~~~~
+
+First, you need to deploy **S3 Server**. This can be done very easily
+via `our **DockerHub**
+page <https://hub.docker.com/r/scality/s3server/>`__ (you want to run it
+with a file backend).
+
+    *Note:* *- If you don't have docker installed on your machine, here
+    are the `instructions to install it for your
+    distribution <https://docs.docker.com/engine/installation/>`__*
+
+Installing Duplicity and its dependencies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Second, you want to install
+`**Duplicity** <http://duplicity.nongnu.org/index.html>`__. You have to
+download `this
+tarball <https://code.launchpad.net/duplicity/0.7-series/0.7.11/+download/duplicity-0.7.11.tar.gz>`__,
+decompress it, and then checkout the README inside, which will give you
+a list of dependencies to install. If you're using Ubuntu 14.04, this is
+your lucky day: here is a lazy step by step install.
+
+.. code:: sh
+
+    $> apt-get install librsync-dev gnupg
+    $> apt-get install python-dev python-pip python-lockfile
+    $> pip install -U boto
+
+Then you want to actually install Duplicity:
+
+.. code:: sh
+
+    $> tar zxvf duplicity-0.7.11.tar.gz
+    $> cd duplicity-0.7.11
+    $> python setup.py install
+
+Using
+-----
+
+Testing your installation
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+First, we're just going to quickly check that S3 Server is actually
+running. To do so, simply run ``$> docker ps`` . You should see one
+container named ``scality/s3server``. If that is not the case, try
+``$> docker start s3server``, and check again.
+
+Secondly, as you probably know, Duplicity uses a module called **Boto**
+to send requests to S3. Boto requires a configuration file located in
+**``/etc/boto.cfg``** to have your credentials and preferences. Here is
+a minimalistic config `that you can finetune following these
+instructions <http://boto.cloudhackers.com/en/latest/getting_started.html>`__.
+
+::
+
+    [Credentials]
+    aws_access_key_id = accessKey1
+    aws_secret_access_key = verySecretKey1
+
+    [Boto]
+    # If using SSL, set to True
+    is_secure = False
+    # If using SSL, unmute and provide absolute path to local CA certificate
+    # ca_certificates_file = /absolute/path/to/ca.crt
+
+    *Note:* *If you want to set up SSL with S3 Server, check out our
+    `tutorial <http://link/to/SSL/tutorial>`__*
+
+At this point, we've met all the requirements to start running S3 Server
+as a backend to Duplicity. So we should be able to back up a local
+folder/file to local S3. Let's try with the duplicity decompressed
+folder:
+
+.. code:: sh
+
+    $> duplicity duplicity-0.7.11 "s3://127.0.0.1:8000/testbucket/"
+
+    *Note:* *Duplicity will prompt you for a symmetric encryption
+    passphrase. Save it somewhere as you will need it to recover your
+    data. Alternatively, you can also add the ``--no-encryption`` flag
+    and the data will be stored plain.*
+
+If this command is succesful, you will get an output looking like this:
+
+::
+
+    --------------[ Backup Statistics ]--------------
+    StartTime 1486486547.13 (Tue Feb  7 16:55:47 2017)
+    EndTime 1486486547.40 (Tue Feb  7 16:55:47 2017)
+    ElapsedTime 0.27 (0.27 seconds)
+    SourceFiles 388
+    SourceFileSize 6634529 (6.33 MB)
+    NewFiles 388
+    NewFileSize 6634529 (6.33 MB)
+    DeletedFiles 0
+    ChangedFiles 0
+    ChangedFileSize 0 (0 bytes)
+    ChangedDeltaSize 0 (0 bytes)
+    DeltaEntries 388
+    RawDeltaSize 6392865 (6.10 MB)
+    TotalDestinationSizeChange 2003677 (1.91 MB)
+    Errors 0
+    -------------------------------------------------
+
+Congratulations! You can now backup to your local S3 through duplicity
+:)
+
+Automating backups
+~~~~~~~~~~~~~~~~~~
+
+Now you probably want to back up your files periodically. The easiest
+way to do this is to write a bash script and add it to your crontab.
+Here is my suggestion for such a file:
+
+.. code:: sh
+
+    #!/bin/bash
+
+    # Export your passphrase so you don't have to type anything
+    export PASSPHRASE="mypassphrase"
+
+    # If you want to use a GPG Key, put it here and unmute the line below
+    #GPG_KEY=
+
+    # Define your backup bucket, with localhost specified
+    DEST="s3://127.0.0.1:8000/testbuckets3server/"
+
+    # Define the absolute path to the folder you want to backup
+    SOURCE=/root/testfolder
+
+    # Set to "full" for full backups, and "incremental" for incremental backups
+    # Warning: you have to perform one full backup befor you can perform
+    # incremental ones on top of it
+    FULL=incremental
+
+    # How long to keep backups for; if you don't want to delete old backups, keep
+    # empty; otherwise, syntax is "1Y" for one year, "1M" for one month, "1D" for
+    # one day
+    OLDER_THAN="1Y"
+
+    # is_running checks whether duplicity is currently completing a task
+    is_running=$(ps -ef | grep duplicity  | grep python | wc -l)
+
+    # If duplicity is already completing a task, this will simply not run
+    if [ $is_running -eq 0 ]; then
+        echo "Backup for ${SOURCE} started"
+
+        # If you want to delete backups older than a certain time, we do it here
+        if [ "$OLDER_THAN" != "" ]; then
+            echo "Removing backups older than ${OLDER_THAN}"
+            duplicity remove-older-than ${OLDER_THAN} ${DEST}
+        fi
+
+        # This is where the actual backup takes place
+        echo "Backing up ${SOURCE}..."
+        duplicity ${FULL} \
+            ${SOURCE} ${DEST}
+            # If you're using GPG, paste this in the command above
+            # --encrypt-key=${GPG_KEY} --sign-key=${GPG_KEY} \
+            # If you want to exclude a subfolder/file, put it below and paste this
+            # in the command above
+            # --exclude=/${SOURCE}/path_to_exclude \
+
+        echo "Backup for ${SOURCE} complete"
+        echo "------------------------------------"
+    fi
+    # Forget the passphrase...
+    unset PASSPHRASE
+
+So let's say you put this file in ``/usr/local/sbin/backup.sh.`` Next
+you want to run ``crontab -e`` and paste your configuration in the file
+that opens. If you're unfamiliar with Cron, here is a good `How
+To <https://help.ubuntu.com/community/CronHowto>`__. The folder I'm
+backing up is a folder I modify permanently during my workday, so I want
+incremental backups every 5mn from 8AM to 9PM monday to friday. Here is
+the line I will paste in my crontab:
+
+.. code:: cron
+
+    */5 8-20 * * 1-5 /usr/local/sbin/backup.sh
+
+Now I can try and add / remove files from the folder I'm backing up, and
+I will see incremental backups in my bucket.
