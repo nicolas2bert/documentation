@@ -4,5 +4,5 @@ Documents
 =========
 .. toctree::
 :maxdepth: 16
-SSL
-DUPLICITY
+SSL.md
+DUPLICITY.md
