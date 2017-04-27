@@ -1,9 +1,11 @@
-documentation-test-scality
-------------
-Documents
-=========
+Scality S3 documentation
+==================
+
+Contents:
+
 .. toctree::
-:maxdepth: 16
-SSL.rst
-DUPLICITY.rst
-DOCKER.rst
+   :maxdepth: 2
+
+   DOCKER
+   Duplicity
+   SSL
