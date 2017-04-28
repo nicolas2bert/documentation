@@ -5,10 +5,11 @@ Scality S3 documentation
 
 .. toctree::
    :maxdepth: 2
-   :caption: User Documentation
+   :caption: Scality S3 Documentation
 
    GETTING_STARTED
    DOCKER
    DUPLICITY
    SSL
    HA
+   S3FS
